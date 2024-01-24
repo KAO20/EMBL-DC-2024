@@ -84,7 +84,7 @@ count_survey <-  surveys %>%
   count(sex, species) %>%  #using the count command 
   arrange(species, desc(n))
 
-# Challenege 7 
+# Challenge 7 
 # how many animals were caught in each plot_type?
 
 surveys %>% 
@@ -126,4 +126,57 @@ surveys %>%
   arrange(year) %>% 
   unique() # this will remove the duplicates 
   
+
+# changing the table from the Long format to the Wide format. 
+
+  # make the survey data set with the mean weight values
+surveys_gw <- surveys %>% 
+  filter(!is.na(weight)) %>% 
+  group_by(plot_id, genus) %>% 
+  summarise(mean_weight = mean(weight))
+
+str(surveys_gw)
+
+surveys_wide2 <- surveys_gw %>% 
+  pivot_wider(names_from = genus, values_from = mean_weight, values_fill = 0) %>% 
+  print(n= 30)
   
+# need a long table for plotting, this is what ggplot2 expects.
+#going from a wide table to long table. 
+
+surveys_long <- surveys_wide %>% 
+  pivot_longer( #because there arent any columns in wide for genus and weight so we make them
+    names_to = "genus", #new column we are making
+    values_to = "mean_weight",  # values will go into this column 
+    cols = -plot_id) #tells code to use all column names go to the rows except plot_id.  
+surveys_long
+
+str(surveys_long)
+
+
+# Challenge 8
+    # my attempt
+surveys_long2 <- surveys %>%
+  pivot_longer(names_to = "measurement" , values_to = "weight", cols = c(weight, year))
+
+# solution
+surveys_long3 <- surveys %>% 
+  pivot_longer(names_to = "measurement", values_to = "values", cols = c(hindfoot_length, weight))
+
+# next Q - calculate the mean for each year for each measurement for each plot type.
+
+surveys_wide3 <- surveys_long3 %>% 
+  group_by(year, measurement, plot_type) %>% # want to calc. mean per year per hind/weight per plot id
+  summarise(mean_value = mean(values, na.rm = T)) %>% 
+  pivot_wider(names_from =  measurement, values_from = mean_value)
+surveys_wide3
+
+# to export a table / write a table 
+surveys_complete <- surveys %>% 
+  filter(!is.na(weight)) %>%  # remove the missing values from weight
+  filter(!is.na(hindfoot_length)) %>% 
+  filter(!is.na(sex))
+surveys_complete 
+
+
+write_csv(surveys_complete, file = "data/surveys_complete.csv")
