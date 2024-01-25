@@ -172,3 +172,50 @@ rplot(trans_cts_corr)
 
 rplot(trans_cts_corr)+
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+#Compare trans_cts and raw_cts
+
+# raw counts in the long table - the counts are whole integer numbers
+#   With a range from 0 to 87000000
+summary(raw_cts_long$cts)
+
+summary(trans_cts_long$cts)
+# now the numbers are closer together the mean is closer to true values. max 23 min 4.
+# 
+#   The raw counts can have some super large counts, and this can skew mean values. 
+#     the transformed counts have done log transformation. 
+
+# make a scatter plot that contains WT rep 1 T0, from raw and transformed data.
+
+raw_cts %>% 
+  ggplot(aes(x = wt_0_r1, y = wt_0_r2)) +
+  geom_point()
+
+raw_cts %>% 
+  ggplot(aes(x = wt_0_r1 + 1, y = wt_0_r2 + 1)) + 
+  geom_point() +
+  scale_x_continuous(trans = "log2") +#this is because the numbers are continuous, this transforms them to log2.
+  scale_y_continuous(trans = "log2")
+
+
+# going to make the plot mean of the counts on the x axis, and the variance on the y axis
+#   need to work with the long format table to do this, to group by strain etc...
+
+raw_cts_long %>% 
+  group_by(gene) %>% 
+  summarise(mean_cts = mean(cts), var_cts = var(cts)) %>% 
+  ggplot(aes(x = mean_cts, y = var_cts)) +
+  geom_point()+
+  geom_abline(colour = "brown") +
+  scale_x_continuous(trans = "log2") + #use log2 you can still see the values instead of scientific number notation
+  scale_y_continuous(trans = "log2")
+# expect the counts to be following the poisson distribution, meaning mean and variance are the same
+#   can see from this olot they are not. 
+
+trans_cts_long %>% 
+  group_by(gene) %>% 
+  summarise(mean_cts = mean(cts), var_cts = var(cts)) %>% 
+  ggplot(aes(x = mean_cts, y = var_cts)) +
+  geom_point()
+
