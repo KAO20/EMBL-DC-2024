@@ -1,5 +1,6 @@
 # Principle component analysis 
 library(tidyverse)
+install.packages("viridis") 
 
 #Create 4 objects with the files, read in the files and assign them to these objects
 
@@ -214,18 +215,19 @@ test_result
 # Challenge to generate an MA plot. (baseMean vs Log2foldChange)
 #   Oragnise the panels by comparison (time point)
 #   Hint: consider log transform baseMean
+library(viridis)
 
 test_result %>% 
   ggplot(aes(x = log10(baseMean) , y = log2FoldChange  )) + # colour = as.factor(comparison)
   geom_point(alpha = 0.1) +
-  facet_wrap(facets = vars(comparison))  
+  facet_wrap(facets = vars(comparison)) + 
   #scale_x_continuous(trans = "log2") 
-  #scale_colour_manual("goldenrod", "deepskyblue2", "grey30", "purple3", "green4")+
+  scale_colour_viridis()
  
 # say that the gene is involved if it has a lower pvalue/ less than of 0.05, can do 0.01 
 #   we can highlight these points in the plot.
 
-test_result %>% 
+ma_plot <- test_result %>% 
   #turner operator, takes 3 arguments, test, then true statement, then other option
   mutate(sig = ifelse(padj <0.01, log2FoldChange, NA )) %>%  #test T of F, if T this will happen, if F this will happen
   ggplot(aes(x = log10(baseMean), y = log2FoldChange)) +
@@ -241,3 +243,90 @@ test_result %>%
 #  Volcano plot shows relationship between pvalue and log2foldchange, the pvalue
 #   is a straight line, anything above is sig.  
 #  MA plot - sig points are curved shows the expression level of the genes.
+
+
+(ma_plot | pca_plot) # when you look at these side by side you can see 30 mins 
+  # is the most different on the PCA plot and has the most sig. points. 
+
+
+# Visualising expression trends
+# Step 1 - to get candidate genes (aka padj lower than 0.01) these are the sig genes
+candidate_genes <-  test_result %>% 
+  filter(padj < 0.01) %>% 
+  # pull - similar to getting the gene column  
+  pull(gene) %>%  #its the same as typing test_result$gene, to get a column friendly in piping, the table becomes a vector
+  unique() #unique of a vector
+
+# Step 1a - get the trans_cts in the long format
+trans_cts_long <- trans_cts %>% 
+  pivot_longer(cols = wt_0_r1:mut_180_r3, names_to = "sample", values_to = "cts") %>% 
+  full_join(sample_info, by= "sample")
+
+#Step 2 - filter the trans_cts_long table to look for candidate genes and 
+#compute mean expression value for each gene in each timpoint and each genotype
+trans_cts_mean <- trans_cts_long %>% 
+  filter(gene %in% candidate_genes) %>% 
+  group_by(gene, strain, minute) %>% 
+  # for each group we are going to summarise 
+  summarise(mean_cts = mean(cts), nrep = n()) %>%  #n = number of elements
+  ungroup() #then we can use the table again by ungrouping elements
+
+
+#Step 3 - plot trends make a spaghetti plot 
+trans_cts_mean %>% 
+  ggplot(aes(x = minute, y = mean_cts)) +
+  geom_line(aes(group = gene), alpha = 0.3) + #fixed value and is the same for every line
+  facet_grid(rows = vars(strain))
+
+
+# need them to show changes relative to their own means - Z score transformation
+# for each gene we are going to subtract the gene mean and divde by standard dev, of all replicates 
+#   scaling data to improve visualisation 
+trans_cts_mean <- trans_cts_long %>% 
+  filter(gene %in% candidate_genes) %>% 
+  group_by(gene) %>% 
+  # this will act on each gene on each timepoint, this will act on genes only
+  mutate(cts_scaled = (cts - mean(cts)) / sd(cts)) %>% 
+  group_by(gene, strain, minute) %>% 
+  summarise(mean_cts_scaled = mean(cts_scaled),
+            nrep = n()) %>% 
+  ungroup()
+
+trans_cts_mean %>% 
+  ggplot(aes(x = minute, y = mean_cts_scaled)) +
+  geom_line(aes(group = gene), alpha = 0.3) +
+  geom_hline(yintercept = 0, colour = 'brown', linetype = "dashed") +
+  facet_grid(rows = vars(strain)) +
+  scale_x_continuous(breaks = unique(trans_cts_mean$minute))
+# this plot shows how regardless of the strain the genes change at 15 and 30 minutes
+#   supervised clustering - you tell it how many clusters.
+
+
+#---------------------------------- Clustering
+#   calculate distance matrix, genes on rows and cols to find genes of similar values.
+
+trans_cts <-  read_csv("data_rnaseq/counts_transformed.csv")
+
+#   1. create a matrix of counts
+#   trans_cts is in wide format need to make it a matrix, 
+#     matrix is required for the clusters.
+
+hclust_matrix <- trans_cts %>% 
+  select(-gene) %>% #everything but the genes
+  as.matrix()
+rownames(hclust_matrix) <- trans_cts$gene
+
+#telling it to only take the names of the rows of the candidate genes
+hclust_matrix <- hclust_matrix[candidate_genes, ] #there will be an error if the candidate gene is not in the matrix, the comma means to select all of the cols
+
+#Z score transform the matrix and transpose it - use built in scale function
+#   the value - the mean / standard deviation. Means that a point is 1, or 3 st devs from the mean
+
+# scale function only does it to the columns, but our genes are in the rows, 
+#   so we change the table so the genes are now columns, then run the scale and
+#   then change the table back. Can also use apply function, it can do rows or columns.
+hclust_matrix <- hclust_matrix %>% 
+  t() %>% 
+  #dim()
+  scale() %>% 
+  t()
