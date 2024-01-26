@@ -330,3 +330,75 @@ hclust_matrix <- hclust_matrix %>%
   #dim()
   scale() %>% 
   t()
+
+
+# re-written neatly down here
+
+hclust_matrix <- trans_cts %>% 
+  select(-gene) %>% 
+  as.matrix()
+
+# assign the row names
+rownames(hclust_matrix) <- trans_cts$gene
+
+hclust_matrix <- hclust_matrix[candidate_genes, ]
+
+hclust_matrix <- hclust_matrix %>% 
+  #transpose the matrix so genes are as columns
+  t() %>% 
+  #apply the scalling to each column of the matrix (genes)
+  scale() %>% #it will give you values, +2 it has deviated from the mean by 
+    # 2 stdev (this is Z score)
+  #transpose back so the genes are as the rows again
+  t()
+
+# to make the clusters we need to know the pairwise/genewise distances
+gene_dist <-  dist(hclust_matrix)
+ 
+#hierarchical clustering
+gene_hclust <-  hclust(gene_dist, method = "complete") #complete linkage method
+
+#we are using base R plotting because we made an object in baseR
+plot(gene_hclust, labels = F)
+#at the tips are the genes, they do appear to be making groups. 
+
+#  Arbitrary clustering: 
+#   Next we can draw a line horizontal 
+plot(gene_hclust, labels = F)
+abline(h = 10, col = "brown", lwd = 2)
+# can make clusters from this point, will make 5 clusters arbitrarily
+#there are methods that can cleverly work out meaningful clusters and plot it for you
+
+#   make clusters based on the number that I want:
+cutree(gene_hclust, k = 5)
+# this will give gene names and a number - cutree has created a named vector that
+# shows the number of the cluster each gene has been put into.
+
+gene_cluster <- cutree(gene_hclust, k = 5) %>% 
+  #this function converts a named vector to a tibble.
+  enframe() %>% 
+  rename(gene = name, cluster = value)
+
+trans_cts_cluster <- trans_cts_mean %>% 
+  inner_join(gene_cluster, by = "gene")
+
+
+#make a plot to visualise the clusters
+
+trans_cts_cluster %>% 
+  ggplot(aes(x = minute, y = mean_cts_scaled)) + 
+  geom_line(aes(group = gene)) +
+  facet_grid(cols = vars(cluster), rows = vars(strain))
+
+#geom_hline(yintercept = 0, colour = "brown")+
+# the clustering has worked fairly well, there are still lines where
+#   it looks like the genes are not all behaving the same.  
+
+
+# Build a heatmap of the gene expression 
+library(ComplexHeatmap)
+
+Heatmap(hclust_matrix, show_row_names = F)
+# the samples seem to have clustered mainly by timepoint
+# row is a single gene
+# column is the sample
